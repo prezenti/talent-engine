@@ -43,4 +43,10 @@ ingress:
   - hostname: sponsorships.prezenti.xyz
     path: ^/board/[A-Za-z0-9_-]{20,}\.html$
     service: http://127.0.0.1:8787
+  # The outreach worklist: which scouted candidates published a way to be
+  # reached, what there is to say to each of them, and who has already been
+  # written to. Its own token so revoking it does not take down the lead feed.
+  - hostname: sponsorships.prezenti.xyz
+    path: ^/outreach/[A-Za-z0-9_-]{20,}\.csv$
+    service: http://127.0.0.1:8787
   - service: http_status:404
