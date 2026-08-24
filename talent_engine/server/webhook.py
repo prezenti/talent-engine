@@ -41,7 +41,7 @@ from ..notify import application_scored
 from ..scoring.concerns import concerns
 from ..scoring.engine import CODE_VERSION, score_snapshot
 from ..store.db import Store
-from . import scores_feed, scouted_feed
+from . import outreach_feed, scores_feed, scouted_feed
 
 log = logging.getLogger("talent_engine.intake")
 
@@ -320,6 +320,8 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
     # separate token so that revoking one does not take the other down with it.
     scout_token = os.environ.get("SCOUT_FEED_TOKEN", "").strip()
     scout_path = f"/scouted/{scout_token}.csv" if scout_token else None
+    outreach_token = os.environ.get("OUTREACH_FEED_TOKEN", "").strip()
+    outreach_path = f"/outreach/{outreach_token}.csv" if outreach_token else None
 
     board_token = os.environ.get("BOARD_TOKEN", "").strip()
     board_path = f"/board/{board_token}.html" if board_token else None
@@ -388,6 +390,17 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
                 except sqlite3.Error:
                     log.exception("scout feed could not read the database")
                     self._plain(503, "leads unavailable\n")
+                    return
+                self._send(200, "text/csv; charset=utf-8", body, no_store=True)
+                return
+            if outreach_path and hmac.compare_digest(path, outreach_path):
+                try:
+                    body = outreach_feed.csv_for(
+                        service.db_path, service.cfg.key
+                    ).encode()
+                except sqlite3.Error:
+                    log.exception("outreach feed could not read the database")
+                    self._plain(503, "outreach unavailable\n")
                     return
                 self._send(200, "text/csv; charset=utf-8", body, no_store=True)
                 return

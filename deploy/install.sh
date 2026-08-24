@@ -55,7 +55,7 @@ run chmod 700 "$RUNTIME"
 say ""
 if [ -f "$RUNTIME/intake.env" ]; then
   missing=""
-  for key in TALLY_SIGNING_SECRET GITHUB_TOKEN SCORES_FEED_TOKEN SCOUT_FEED_TOKEN BOARD_TOKEN; do
+  for key in TALLY_SIGNING_SECRET GITHUB_TOKEN SCORES_FEED_TOKEN SCOUT_FEED_TOKEN BOARD_TOKEN OUTREACH_FEED_TOKEN; do
     grep -q "^$key=." "$RUNTIME/intake.env" || missing="$missing $key"
   done
   if [ -n "$missing" ]; then

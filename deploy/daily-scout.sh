@@ -49,5 +49,16 @@ cd "$REPO"
       --budget 200 2>&1
 } >>"$LOG" 2>&1
 
+# And work out what there is to say to whoever recon just made reachable. This
+# only builds the line; nothing is sent. Cheap because a hook is computed once
+# and kept -- the scorer's own cited repository costs no request at all, and a
+# fresh lookup is one request for someone who has never had one.
+{
+  echo "--- outreach $(date -Is) ---"
+  /usr/bin/python3 "$REPO/tools/outreach.py" \
+      --program "$PROGRAM" \
+      --budget 120 2>&1
+} >>"$LOG" 2>&1
+
 # Keep the log from growing without bound; a scout run is a few lines a day.
 tail -n 2000 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"

@@ -257,6 +257,27 @@ CREATE TABLE IF NOT EXISTS profile_recon (
     checked_at TEXT NOT NULL
 );
 
+-- The one line of a cold message that has to be true per person: which piece
+-- of their public work brought them up, and through which scout channel. Kept
+-- beside `profile_recon` rather than inside it because recon answers "where
+-- can this person be reached" and this answers "what is there to say" -- and
+-- because a repository goes stale on a different clock to a profile.
+--
+-- `sent_at` is written by the operator, not the pipeline. It exists so that a
+-- second pass can leave alone anybody already contacted, which is the one
+-- mistake in outreach that cannot be taken back.
+CREATE TABLE IF NOT EXISTS outreach_hooks (
+    handle TEXT PRIMARY KEY,
+    repo TEXT DEFAULT '',
+    repo_url TEXT DEFAULT '',
+    repo_desc TEXT DEFAULT '',
+    basis TEXT DEFAULT '',
+    channel_phrase TEXT DEFAULT '',
+    hook TEXT DEFAULT '',
+    built_at TEXT NOT NULL,
+    sent_at TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS contacts (
     submission_id TEXT PRIMARY KEY,
     email TEXT DEFAULT '',
@@ -409,6 +430,43 @@ class Store:
     def recon_for(self, handle: str) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM profile_recon WHERE handle = ?", (handle,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def save_hook(self, found: dict) -> None:
+        """Record what there is to say to a scouted candidate.
+
+        Preserves `sent_at` across rebuilds. The hook is derived data and may
+        be recomputed at any time; the fact that a human already sent a message
+        is not, and losing it would mean messaging somebody twice.
+        """
+        prior = self.conn.execute(
+            "SELECT sent_at FROM outreach_hooks WHERE handle = ?", (found["handle"],)
+        ).fetchone()
+        self.conn.execute(
+            "INSERT OR REPLACE INTO outreach_hooks "
+            "(handle, repo, repo_url, repo_desc, basis, channel_phrase, hook, "
+            "built_at, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                found["handle"], found.get("repo", ""), found.get("repo_url", ""),
+                found.get("repo_desc", ""), found.get("basis", ""),
+                found.get("channel_phrase", ""), found.get("hook", ""),
+                utc_now_iso(), (prior["sent_at"] if prior else "") or "",
+            ),
+        )
+        self.conn.commit()
+
+    def mark_contacted(self, handle: str, when: str = "") -> None:
+        """Record that a human sent this person a message."""
+        self.conn.execute(
+            "UPDATE outreach_hooks SET sent_at = ? WHERE handle = ?",
+            (when or utc_now_iso(), handle),
+        )
+        self.conn.commit()
+
+    def hook_for_handle(self, handle: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM outreach_hooks WHERE handle = ?", (handle,)
         ).fetchone()
         return dict(row) if row else None
 

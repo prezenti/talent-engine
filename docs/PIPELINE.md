@@ -16,6 +16,10 @@ flowchart TD
     R --> D[digest to Telegram, silent if nothing new]
   end
 
+  subgraph reach["Reach — by hand, never by automation"]
+    H[outreach: the one true line per person] --> M[operator sends, marks contacted]
+  end
+
   subgraph take["Take — whenever someone applies"]
     F[Tally form] -->|signed webhook| I[intake service]
     I --> SC[collect GitHub, score, assign UID]
@@ -26,11 +30,15 @@ flowchart TD
     B["/board/&lt;token&gt;.html<br/>every applicant, rebuilt every 15m"]
     CS["/scores/&lt;token&gt;.csv<br/>into the stewards' sheet"]
     LS["/scouted/&lt;token&gt;.csv<br/>leads and how to reach them"]
+    OS["/outreach/&lt;token&gt;.csv<br/>who to write to, and what to say"]
   end
 
   SC --> B
   SC --> CS
   R --> LS
+  R --> H
+  H --> OS
+  OS --> SHEET
   CS --> SHEET[stewards' Google Sheet:<br/>Tally · Review · Leads · Outreach]
   LS --> SHEET
 ```
@@ -45,7 +53,7 @@ flowchart TD
 | Board rebuild + stuck alert | `deploy/applicant-watch.sh` | cron every 15 min | the board freezes at its last good copy while still answering 200 |
 | Ledger backup | `deploy/backup-talent-engine.sh` | cron 03:25 UTC | the audit log, contacts and decisions exist in one place only |
 
-## The five contracts
+## The six contracts
 
 These are the promises other things are built on. Each one has a test, because
 each one was learned by breaking it.
@@ -79,9 +87,19 @@ says out loud in a meeting. Numbers come from a high-water-mark counter, not
 from `MAX(seq)+1`, so deleting a row cannot cause the next applicant to be
 issued a reference that has already gone out.
 
+**6. Nothing writes to a stranger.** The programme's terms say people found by
+scouting "are contacted only to invite an application", and there is no X
+credential on this host so that the sentence stays true by construction rather
+than by discipline. `tools/outreach.py` builds the list and drafts the message;
+a person sends it. The list excludes anyone who has already applied and anyone
+already marked contacted, and `outreach_hooks.sent_at` survives every rebuild --
+the hook is derived data and can be recomputed, the fact that a human already
+wrote to somebody cannot. A row with no verifiable hook renders an empty message
+rather than a vague one. See [OUTREACH.md](OUTREACH.md).
+
 ## The stewards' sheet
 
-Four tabs. The first is Tally's own; the rest are ours.
+Five tabs. The first is Tally's own; the rest are ours.
 
 | Tab | What it is |
 |---|---|
@@ -89,6 +107,7 @@ Four tabs. The first is Tally's own; the rest are ours.
 | Review | `=IMPORTDATA(".../scores/<token>.csv")` — scores beside the applications |
 | Leads | `=IMPORTDATA(".../scouted/<token>.csv")` — who the scout found and how to reach them |
 | Outreach | typed by hand, identity columns pulled from Leads |
+| Send | `=IMPORTDATA(".../outreach/<token>.csv")` — reachable candidates, best-scored first, with the line that says how each was found. Re-sorts and shrinks, so never type beside it: `tools/outreach.py --mark` is where "contacted" lives |
 
 Outreach, in `A2`, `B2`, `C2`:
 
