@@ -31,6 +31,7 @@ flowchart TD
     CS["/scores/&lt;token&gt;.csv<br/>into the stewards' sheet"]
     LS["/scouted/&lt;token&gt;.csv<br/>leads and how to reach them"]
     OS["/outreach/&lt;token&gt;.csv<br/>who to write to, and what to say"]
+    SD["/send/&lt;token&gt;.html<br/>the queue, one at a time, with the mark button"]
   end
 
   SC --> B
@@ -38,6 +39,8 @@ flowchart TD
   R --> LS
   R --> H
   H --> OS
+  H --> SD
+  SD -->|marks sent| H
   OS --> SHEET
   CS --> SHEET[stewards' Google Sheet:<br/>Tally · Review · Leads · Outreach]
   LS --> SHEET

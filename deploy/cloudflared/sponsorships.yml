@@ -49,4 +49,13 @@ ingress:
   - hostname: sponsorships.prezenti.xyz
     path: ^/outreach/[A-Za-z0-9_-]{20,}\.csv$
     service: http://127.0.0.1:8787
+  # The send console and its one write. Two paths rather than a prefix so the
+  # edge allowlist still names exactly what it lets through; the mark endpoint
+  # is POST-only behind the same token and changes one column for one handle.
+  - hostname: sponsorships.prezenti.xyz
+    path: ^/send/[A-Za-z0-9_-]{20,}\.html$
+    service: http://127.0.0.1:8787
+  - hostname: sponsorships.prezenti.xyz
+    path: ^/send/[A-Za-z0-9_-]{20,}/mark$
+    service: http://127.0.0.1:8787
   - service: http_status:404

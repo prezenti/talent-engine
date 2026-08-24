@@ -29,6 +29,7 @@ import os
 import queue
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -41,7 +42,7 @@ from ..notify import application_scored
 from ..scoring.concerns import concerns
 from ..scoring.engine import CODE_VERSION, score_snapshot
 from ..store.db import Store
-from . import outreach_feed, scores_feed, scouted_feed
+from . import outreach_feed, scores_feed, scouted_feed, send_console
 
 log = logging.getLogger("talent_engine.intake")
 
@@ -323,6 +324,14 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
     outreach_token = os.environ.get("OUTREACH_FEED_TOKEN", "").strip()
     outreach_path = f"/outreach/{outreach_token}.csv" if outreach_token else None
 
+    # The send console: the same queue, one person at a time, with the one
+    # write that keeps it honest. Its own token because this is the only
+    # surface here that changes state, and because a page that can mark
+    # somebody contacted should be revocable without touching the read feeds.
+    send_token = os.environ.get("SEND_CONSOLE_TOKEN", "").strip()
+    send_path = f"/send/{send_token}.html" if send_token else None
+    send_mark_path = f"/send/{send_token}/mark" if send_token else None
+
     board_token = os.environ.get("BOARD_TOKEN", "").strip()
     board_path = f"/board/{board_token}.html" if board_token else None
     board_file = os.environ.get("BOARD_HTML", "").strip()
@@ -404,6 +413,27 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
                     return
                 self._send(200, "text/csv; charset=utf-8", body, no_store=True)
                 return
+            if send_path and hmac.compare_digest(path, send_path):
+                try:
+                    body = send_console.page(
+                        service.db_path,
+                        service.cfg.key,
+                        send_mark_path,
+                        datetime.now(timezone.utc).date().isoformat(),
+                    ).encode()
+                except sqlite3.Error:
+                    log.exception("send console could not read the database")
+                    self._plain(503, "send queue unavailable\n")
+                    return
+                self._send(
+                    200, "text/html; charset=utf-8", body, no_store=True,
+                    csp=(
+                        "default-src 'none'; style-src 'unsafe-inline'; "
+                        "script-src 'unsafe-inline'; connect-src 'self'; "
+                        "base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+                    ),
+                )
+                return
             if board_path and board_file and hmac.compare_digest(path, board_path):
                 try:
                     with open(board_file, "rb") as fh:
@@ -436,6 +466,11 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
             self.do_GET()
 
         def do_POST(self) -> None:  # noqa: N802
+            if send_mark_path and hmac.compare_digest(
+                self.path.split("?", 1)[0].rstrip("/"), send_mark_path
+            ):
+                self._mark_sent()
+                return
             if self.path.rstrip("/") not in ("/webhook/tally", "/webhook"):
                 self._plain(404)
                 return
@@ -473,6 +508,44 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
 
             disposition = service.accept(sub)
             self._plain(202, disposition + "\n")
+
+        def _mark_sent(self) -> None:
+            """Record that a human sent a message. The token in the path is the
+            authorisation, exactly as it is for the feeds -- this changes one
+            column for one handle and cannot reach anything else."""
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                self._plain(400)
+                return
+            if length <= 0 or length > 4096:
+                self._plain(400)
+                return
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                handle = str(body.get("handle", "")).strip()
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                self._plain(400)
+                return
+            if not handle or len(handle) > 40:
+                self._plain(400)
+                return
+            try:
+                ok = send_console.mark(
+                    service.db_path, handle, utc_now_iso()
+                )
+            except sqlite3.Error:
+                log.exception("could not mark %s contacted", handle)
+                self._plain(503)
+                return
+            if not ok:
+                # Already marked, or never in the queue. Not a failure -- but
+                # the answer must say so rather than reporting a change that did
+                # not happen, or the button teaches the operator to trust it
+                # when it has done nothing.
+                log.info("mark: %s was already recorded or not queued", handle)
+            body = json.dumps({"ok": True, "changed": ok}).encode()
+            self._send(200, "application/json", body, no_store=True)
 
     return Handler
 
