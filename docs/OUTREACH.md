@@ -44,6 +44,27 @@ recently discovered. After sending:
 python3 tools/outreach.py --program prezenti-sponsorship-trial --mark handle1,handle2
 ```
 
+## The send console
+
+`/send/<token>.html` is the same queue rendered one person at a time: the
+message already written, a copy button, a link to their profile, and a **Mark
+sent** button that writes `sent_at` and drops them from the queue for good.
+
+It exists because marking is the step that gets skipped when a batch runs long,
+and skipping it is how somebody gets written to twice. Making the bookkeeping a
+button rather than a command afterwards is the whole design.
+
+- It renders **live**, not from a cron file. A board of applicants can be
+  fifteen minutes stale; a send queue that is fifteen minutes stale hands you
+  somebody you already wrote to.
+- It shows the next 25 and says something once you are past 30 in a day.
+- The mark endpoint answers `{"ok": true, "changed": false}` when the handle was
+  already recorded, and the button then reads *already recorded* rather than
+  *sent*. A control that reports success on a no-op teaches you to trust it when
+  it has done nothing.
+- It is the only surface here that writes, so it has its own token and can be
+  revoked without touching the read feeds.
+
 ## The one line that must be true
 
 Every row carries a **Why we found you** built from two facts already on
