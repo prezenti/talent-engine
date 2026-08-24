@@ -93,50 +93,44 @@ no message.
 
 ## The message
 
-Substitute `{name}` (fall back to their handle) and `{hook}` from the CSV.
+Lives in `talent_engine/modes/outreach.py`, version-controlled rather than in
+somebody's notes, so a change to the programme's numbers changes what strangers
+are told.
 
-### Full version
+**It is written to not read as generated**, and the tell is shape rather than
+vocabulary: a greeting, a value proposition, benefits enumerated in threes and a
+call to action is recognisable as a template from the first line, after which
+everything else is read as one. Someone who genuinely found your repository
+writes three sentences and stops. So: contractions, no em dashes, no lists of
+three, no sign-off flourish, one concrete thing and one link. There is a test
+for the em dashes.
 
-> Hi {name} — I'm zoz, from Prezenti. You came up through {hook}. Nothing here
-> was scraped beyond what GitHub already publishes, and I'm writing for one
-> reason: to invite you to apply.
->
-> We back builders on evidence of what they've actually shipped. This is a small
-> trial — 5 places, 4 months, $1,400 each in tooling: Claude Max 20x, ChatGPT
-> Pro, and a $200 flexible allowance. We're looking for people building agent
-> infrastructure, protocol engineering and on-chain tooling, deliberately
-> including people who have never touched Celo.
->
-> No equity, and you keep all IP. No exclusivity, withdraw at any time. In
-> return we ask a good-faith 2% pledge on revenue and grants the sponsored work
-> actually earns — capped at $14,000, expiring after 36 months, pro-rated by the
-> months you take.
->
-> The terms, the rubric you'd be scored against and the code that does the
-> scoring are all public: github.com/prezenti/talent-engine. You can run it and
-> reproduce your own number before deciding whether we're worth your time.
->
-> Apply: sponsorships.prezenti.xyz
->
-> Everyone who applies gets their score, the evidence behind it, and feedback —
-> selected or not.
->
-> — zoz
+Four openings and two bodies, chosen by a stable hash of the handle rather than
+at random. These people know each other — several contribute to the same
+repositories — so two of them comparing notes should find two different
+messages. The variants differ in **shape**, not in synonyms: rotating "came
+across" / "stumbled on" / "found" yields three hundred messages that are
+obviously one message, which is the problem rather than a solution to it.
 
-### Short version
+Their own repository is named the way they name it: `metagraphed`, not
+`JSONbored/metagraphed`, which said to JSONbored is a database field read aloud.
+Somebody else's repository keeps its owner, because there the owner is the
+point. First names only; a full name reads as a merge field.
 
-For a first touch into a request inbox, where length reads as a sales sequence.
+The long version states the 2% ask **before** the benefits. Burying what we want
+is the thing that would actually cost trust.
 
-> Hi {name} — zoz from Prezenti. You came up through {hook}.
->
-> We fund builders on shipped evidence rather than network: 5 places, 4 months,
-> $1,400 each in tooling, for people building agent infrastructure, protocol and
-> on-chain work. No equity, you keep all IP.
->
-> Terms, rubric and the scoring code are public so you can check us before
-> replying: sponsorships.prezenti.xyz
->
-> Genuinely just an invitation to apply.
+### The draft is not the message
+
+The draft claims exactly one thing: this repository is what surfaced you. That
+is true and checkable. It is **not** evidence that anybody read anything, and no
+template can be.
+
+So the console's message is a textarea, with the repository's own description
+directly above it. One sentence of your own reacting to that description is
+worth more than everything the draft says, and it takes about ten seconds. That
+is the difference between a mailout and a message, and it is the reason this
+part is done by a person.
 
 ## Things that would make this dishonest
 
