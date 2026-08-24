@@ -37,7 +37,7 @@ RUNTIME = Path.home() / "talent-engine-runtime"
 # that one might work tomorrow; 'refused' is a settled fact and is not.
 QUEUE = """
 SELECT sc.handle, r.x_handle, r.name,
-       h.hook, d.user_id, d.dm_status,
+       h.hook, h.repo, d.user_id, d.dm_status,
        (SELECT MAX(total) FROM scores s WHERE s.handle = sc.handle) AS total
   FROM scouted sc
   JOIN profile_recon r ON r.handle = sc.handle
@@ -75,7 +75,8 @@ def main() -> int:
     targets = []
     for r in rows:
         text = outreach.render(
-            template, handle=r["handle"], name=r["name"] or "", hook=r["hook"] or ""
+            template, handle=r["handle"], name=r["name"] or "",
+            hook=r["hook"] or "", repo=r["repo"] or "",
         )
         if text:
             targets.append({**r, "text": text})

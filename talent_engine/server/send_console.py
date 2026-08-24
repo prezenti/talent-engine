@@ -91,9 +91,10 @@ h1{font-size:1.15rem;margin:0 0 .2rem}
 .meta .sep{opacity:.5;padding:0 .35rem}
 .weak{color:var(--warn)}
 .desc{font-size:.85rem;color:var(--dim);margin:0 0 .7rem;font-style:italic}
-pre.msg{white-space:pre-wrap;word-wrap:break-word;background:transparent;
-  border:1px solid var(--line);border-radius:.4rem;padding:.75rem;margin:0 0 .7rem;
-  font:14px/1.5 var(--mono)}
+textarea.msg{display:block;width:100%;resize:vertical;background:transparent;
+  color:inherit;border:1px solid var(--line);border-radius:.4rem;padding:.75rem;
+  margin:0 0 .7rem;font:14px/1.5 var(--mono)}
+textarea.msg:focus{outline:none;border-color:var(--accent)}
 .row{display:flex;flex-wrap:wrap;gap:.5rem}
 button,a.btn{font:inherit;font-size:.85rem;padding:.4rem .8rem;border-radius:.4rem;
   border:1px solid var(--line);background:var(--card);color:var(--ink);
@@ -110,16 +111,12 @@ footer{color:var(--dim);font-size:.78rem;margin-top:2rem;border-top:1px solid va
 def _card(row: sqlite3.Row, mark_path: str) -> str:
     handle = row["handle"]
     message = outreach.render(
-        outreach.SHORT_MESSAGE,
-        handle=handle,
-        name=row["name"] or "",
-        hook=row["hook"] or "",
+        outreach.SHORT_MESSAGE, handle=handle, name=row["name"] or "",
+        hook=row["hook"] or "", repo=row["repo"] or "",
     )
     full = outreach.render(
-        outreach.FULL_MESSAGE,
-        handle=handle,
-        name=row["name"] or "",
-        hook=row["hook"] or "",
+        outreach.FULL_MESSAGE, handle=handle, name=row["name"] or "",
+        hook=row["hook"] or "", repo=row["repo"] or "",
     )
     e = html.escape
     score = f'{row["total"]:.1f}' if row["total"] is not None else "unscored"
@@ -132,11 +129,17 @@ def _card(row: sqlite3.Row, mark_path: str) -> str:
         bits.append(e(row["basis"]))
     meta = '<span class="sep">·</span>'.join(bits)
 
+    # Their repository and what it says about itself, put directly above the
+    # box so the one sentence worth adding is in front of you while you type
+    # it. The draft is true; it is not evidence that anybody read anything, and
+    # only a person can supply that.
     repo_line = ""
     if row["repo"]:
         repo_line = (
             f'<div class="desc"><a href="{e(row["repo_url"])}" target="_blank" '
-            f'rel="noopener noreferrer">{e(row["repo"])}</a> — {e(row["repo_desc"] or "")}</div>'
+            f'rel="noopener noreferrer">{e(row["repo"])}</a>'
+            + (f' · {e(row["repo_desc"])}' if row["repo_desc"] else "")
+            + "</div>"
         )
 
     return f"""<article class="card" id="c-{e(handle)}">
@@ -149,11 +152,12 @@ def _card(row: sqlite3.Row, mark_path: str) -> str:
   </div>
   <div class="meta">{meta}</div>
   {repo_line}
-  <pre class="msg" id="m-{e(handle)}">{e(message)}</pre>
-  <pre class="msg" id="f-{e(handle)}" hidden>{e(full)}</pre>
+  <textarea class="msg" id="m-{e(handle)}" rows="9"
+    spellcheck="true">{e(message)}</textarea>
+  <textarea class="msg" id="f-{e(handle)}" rows="14" hidden>{e(full)}</textarea>
   <div class="row">
-    <button type="button" data-copy="m-{e(handle)}">Copy short</button>
-    <button type="button" data-copy="f-{e(handle)}">Copy full</button>
+    <button type="button" data-copy="m-{e(handle)}">Copy</button>
+    <button type="button" data-swap="{e(handle)}">Longer version</button>
     <a class="btn" href="https://x.com/{e(row["x_handle"])}" target="_blank"
        rel="noopener noreferrer">Open on X</a>
     <button type="button" class="mark" data-mark="{e(handle)}">Mark sent</button>
@@ -167,15 +171,21 @@ SCRIPT = """
 document.addEventListener('click', async (ev) => {
   const copy = ev.target.closest('[data-copy]');
   if (copy) {
-    const el = document.getElementById(copy.dataset.copy);
-    try { await navigator.clipboard.writeText(el.textContent); }
-    catch (e) {
-      // clipboard needs a secure context; select the text so ctrl-c still works
-      const r = document.createRange(); r.selectNodeContents(el);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    }
+    // The box, not the original: whatever was typed into it is the message.
+    const card = copy.closest('.card');
+    const el = card.querySelector('textarea.msg:not([hidden])');
+    try { await navigator.clipboard.writeText(el.value); }
+    catch (e) { el.focus(); el.select(); }  // no secure context; ctrl-c still works
     const was = copy.textContent; copy.textContent = 'copied';
     setTimeout(() => { copy.textContent = was; }, 1200);
+    return;
+  }
+  const swap = ev.target.closest('[data-swap]');
+  if (swap) {
+    const card = swap.closest('.card');
+    const boxes = card.querySelectorAll('textarea.msg');
+    boxes.forEach(b => { b.hidden = !b.hidden; });
+    swap.textContent = boxes[0].hidden ? 'Shorter version' : 'Longer version';
     return;
   }
   const mark = ev.target.closest('[data-mark]');
@@ -234,9 +244,11 @@ def page(db_path: str, program: str, mark_path: str, today: str) -> str:
   {counts["sent_today"]} today · showing the next {len(rows)}</p>
 {pace}
 {cards}
-<footer>Copy, send on X, mark. Marking is what stops anyone being written to
-twice — it writes to the database, not to this page, and survives every rebuild
-of the list. Nothing here sends anything.</footer>
+<footer>The draft is the true part: it names the repository that surfaced them
+and nothing else. <strong>Add a sentence of your own before you send.</strong>
+The box is editable, their repository and its description are just above it, and
+one line showing you actually looked is worth more than everything the draft
+says. Then mark it, which is what stops anyone being written to twice.</footer>
 </div>
 <script>const MARK_PATH = {json.dumps(mark_path)};{SCRIPT}</script>
 """

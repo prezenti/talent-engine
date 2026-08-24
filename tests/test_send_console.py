@@ -100,8 +100,11 @@ def test_the_message_is_rendered_into_the_page_ready_to_copy(tmp_path):
     _seed(store, "someone", hook="your own repositories — specifically a/b")
     page = _page(store)
     assert "sponsorships.prezenti.xyz" in page
-    assert "zoz from Prezenti" in page
-    assert "specifically a/b" in page
+    assert "Hi someone," in page
+    # Editable, because the sentence that shows somebody actually looked is the
+    # part only a person can add.
+    assert '<textarea class="msg"' in page
+    assert "Add a sentence of your own" in page
 
 
 def test_applicants_never_reach_the_send_queue(tmp_path):

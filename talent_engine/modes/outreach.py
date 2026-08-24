@@ -133,45 +133,116 @@ def hook_for(client, handle: str, channels: str, payload: str | None) -> dict[st
     return out
 
 
-# The message itself, kept here rather than in the operator's notes so that it
-# is version-controlled, reviewable in a diff, and rendered identically for
-# every recipient. Both versions say the same true things; the short one exists
-# because a long first message into a request inbox reads as a sales sequence
-# regardless of what it contains.
+# The message. Kept here rather than in the operator's notes so that it is
+# version-controlled, reviewable in a diff, and so that a change to the
+# programme's numbers changes what strangers are told.
 #
-# Every factual claim below is checkable against README.md and the terms. If
-# the programme's numbers change, these change with them -- a message quoting
-# superseded terms is a promise the programme is not making.
-SHORT_MESSAGE = """Hi {name} — zoz from Prezenti. You came up through {hook}.
+# Written to be short, because the tell is length. A cold message that opens
+# with a greeting, states a value proposition, enumerates benefits in threes
+# and closes with a call to action is recognisable as a template from the first
+# line, and everything after that line is read as one. A person who genuinely
+# found your repository writes three sentences and stops.
+#
+# So: no em dashes, no lists of three, no "genuinely", no sign-off flourish.
+# Contractions. One concrete thing (the repository), one offer, one link. The
+# reader can ask for the rest, and if they do not, the rest would not have
+# helped.
+#
+# Every factual claim is checkable against README.md and the terms.
 
-We fund builders on shipped evidence rather than network: 5 places, 4 months, $1,400 each in tooling, for people building agent infrastructure, protocol and on-chain work. No equity, you keep all IP.
+# Four openings that differ in shape rather than in synonyms. Rotating
+# "came across" / "stumbled on" / "found" produces 300 messages that are
+# obviously one message, which is the problem being solved rather than a
+# solution to it. These start in different places: the work, the ask, the
+# programme, the reason.
+OPENINGS = [
+    "Hi {name}, found you through {repo}.",
+    "Hi {name}, cold message, sorry. I found you through {repo}.",
+    "Hi {name}, {repo} came up while I was looking at what people are shipping in agent infra.",
+    "Hi {name}, I went looking for people building agent infrastructure and ended up at {repo}.",
+]
 
-Terms, rubric and the scoring code are public so you can check us before replying: sponsorships.prezenti.xyz
+# Two bodies rather than one, for the same reason as the openings: the body is
+# the longest part and therefore the part that gives a template away when two
+# recipients compare messages.
+BODIES = [
+    """We're funding 5 people for 4 months. About $1,400 each in tooling, Claude Max and ChatGPT Pro plus some cash. No equity, we take no IP, and you can leave whenever you want.
 
-Genuinely just an invitation to apply."""
+sponsorships.prezenti.xyz""",
+    """We've got 5 sponsorships going. 4 months each, roughly $1,400 of tooling per person (Claude Max, ChatGPT Pro, and a bit of cash on top). We take no equity and no IP, and you can pull out at any point.
 
-FULL_MESSAGE = """Hi {name} — I'm zoz, from Prezenti. You came up through {hook}. Nothing here was scraped beyond what GitHub already publishes, and I'm writing for one reason: to invite you to apply.
+sponsorships.prezenti.xyz""",
+]
 
-We back builders on evidence of what they've actually shipped. This is a small trial — 5 places, 4 months, $1,400 each in tooling: Claude Max 20x, ChatGPT Pro, and a $200 flexible allowance. We're looking for people building agent infrastructure, protocol engineering and on-chain tooling, deliberately including people who have never touched Celo.
+CLOSINGS = [
+    "The terms and the code that does the scoring are public, if you'd rather check us before replying.",
+    "Happy to answer anything. The scoring code is public if you want to see how it works.",
+    "You can read the terms and reproduce your own score before deciding we're worth the time.",
+    "No pressure either way.",
+]
 
-No equity, and you keep all IP. No exclusivity, withdraw at any time. In return we ask a good-faith 2% pledge on revenue and grants the sponsored work actually earns — capped at $14,000, expiring after 36 months, pro-rated by the months you take.
+# The longer one, for somebody who replies asking what the catch is. Still not a
+# landing page: the catch is stated first because burying it is the thing that
+# would actually cost trust.
+FULL_MESSAGE = """{opening}
 
-The terms, the rubric you'd be scored against and the code that does the scoring are all public: github.com/prezenti/talent-engine. You can run it and reproduce your own number before deciding whether we're worth your time.
+We're funding 5 people for 4 months, about $1,400 each in tooling: Claude Max 20x, ChatGPT Pro, and $200 to spend on whatever else. It's a trial, so it's small on purpose.
 
-Apply: sponsorships.prezenti.xyz
+The catch, stated up front: we ask a good-faith 2% pledge on revenue and grants the funded work actually earns. Capped at $14,000, expires after 36 months, pro-rated if you leave early. No equity, no IP, no exclusivity, and you can withdraw at any point.
 
-Everyone who applies gets their score, the evidence behind it, and feedback — selected or not.
+We're looking for agent infrastructure, protocol work and on-chain tooling. You don't need to have touched Celo, though we'd want a credible plan for it if you got a place.
 
-— zoz"""
+Everything is public, including the rubric you'd be scored against and the code that does the scoring: github.com/prezenti/talent-engine. You can run it yourself and see your own number before you decide.
+
+sponsorships.prezenti.xyz"""
+
+SHORT_MESSAGE = """{opening}
+
+{body}
+
+{closing}"""
 
 
-def render(template: str, *, handle: str, name: str, hook: str) -> str:
+def variant(handle: str, count: int) -> int:
+    """Which opening this person gets. Stable, so a rebuild does not reshuffle.
+
+    Chosen by the handle rather than at random because these people know each
+    other: several work on the same repositories, and two of them comparing
+    notes should find two different messages, not the same one twice.
+    """
+    return sum(handle.encode()) % max(1, count)
+
+
+def short_repo(repo: str, handle: str) -> str:
+    """`owner/name` is how a machine refers to a repository. Their own repo is
+    just its name, and saying "JSONbored/metagraphed" to JSONbored is the sound
+    of something reading a database field aloud."""
+    if "/" in repo:
+        owner, _, name = repo.partition("/")
+        if owner.lower() == handle.lower():
+            return name
+    return repo
+
+
+def render(template: str, *, handle: str, name: str, hook: str = "",
+           repo: str = "") -> str:
     """Fill a message for one person, or return "" if there is nothing true to say.
 
-    A missing hook is a refusal, not a blank to paper over: the opening line is
-    the programme's claim that it found this person by reading public work, and
-    a message that cannot make that claim should not be sent.
+    Nothing to say means no repository and no channel: the opening line is the
+    programme's claim that it found this person by reading public work, and a
+    message that cannot make that claim should not be sent.
     """
-    if not hook:
+    subject = short_repo(repo, handle) if repo else hook
+    if not subject:
         return ""
-    return template.format(name=(name or "").strip() or handle, hook=hook)
+    who = (name or "").strip() or handle
+    # A full name reads as a mail merge; a first name reads as a person typing.
+    who = who.split()[0] if " " in who else who
+    opening = OPENINGS[variant(handle, len(OPENINGS))].format(name=who, repo=subject)
+    return template.format(
+        opening=opening,
+        body=BODIES[variant(handle + "b", len(BODIES))],
+        closing=CLOSINGS[variant(handle[::-1], len(CLOSINGS))],
+        name=who,
+        repo=subject,
+    )

@@ -81,6 +81,9 @@ def main() -> int:
                     help="include people already marked contacted")
     ap.add_argument("--mark", default="",
                     help="comma-separated handles to record as contacted, then exit")
+    ap.add_argument("--unmark", default="",
+                    help="put handles back in the queue -- for a mis-tapped button, "
+                         "not for writing to somebody a second time")
     args = ap.parse_args()
 
     store = Store(args.db)
@@ -89,6 +92,20 @@ def main() -> int:
         for handle in [h.strip().lstrip("@") for h in args.mark.split(",") if h.strip()]:
             store.mark_contacted(handle)
             print(f"marked contacted: {handle}")
+        store.close()
+        return 0
+
+    if args.unmark:
+        # The button will get mis-tapped. Without this the only remedy is
+        # editing the database by hand, which is how a careful person ends up
+        # doing something careless at speed.
+        for handle in [h.strip().lstrip("@") for h in args.unmark.split(",") if h.strip()]:
+            cur = store.conn.execute(
+                "UPDATE outreach_hooks SET sent_at = '' WHERE handle = ?", (handle,)
+            )
+            store.conn.commit()
+            print(f"back in the queue: {handle}" if cur.rowcount
+                  else f"not found: {handle}")
         store.close()
         return 0
 
@@ -133,7 +150,8 @@ def main() -> int:
                 f'https://x.com/{r["x_handle"]}',
                 outreach.render(
                     outreach.SHORT_MESSAGE,
-                    handle=r["handle"], name=r["name"] or "", hook=r["hook"] or "",
+                    handle=r["handle"], name=r["name"] or "",
+                    hook=r["hook"] or "", repo=r["repo"] or "",
                 ),
                 r["hook"] or "",
                 r["repo"] or "",
