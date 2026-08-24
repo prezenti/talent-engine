@@ -24,9 +24,15 @@ rather than by memory:
   of the list, because the hook is derived data and the fact that a human
   already wrote to somebody is not.
 
-Nothing is sent by automation. There is no X credential on this machine and
-there should not be one: a cold message arriving under a bot is precisely what
-the paragraph above promises these people is not happening.
+Sending happens two ways, and both draw from the same queue and write the same
+column, so a person cannot be reached twice by two different routes.
+
+- **The send console** — a person copies the message and presses a button.
+- **`tools/x_dm.py`** — sends through X under a grant the account owner approved
+  in a browser. X does not permit app-only authentication for Direct Messages,
+  so every message is still attributed to a person rather than to a bot with its
+  own identity. That is the correct shape for this, not a limitation worked
+  around.
 
 ## Building the list
 
@@ -144,3 +150,71 @@ For a first touch into a request inbox, where length reads as a sales sequence.
   account; the **Basis** column says where each one came from.
 - Volume. 300 identical messages in an hour is a bulk send whatever the content
   says, and X will treat it as one.
+
+
+## The X channel
+
+Two things, in this order.
+
+### The list first
+
+```bash
+python3 tools/x_list.py --program prezenti-sponsorship-trial \
+    --create --name "Builders we found"
+```
+
+Private by default, and `--public` is deliberately awkward: adding somebody to
+a public list **notifies them**, and several hundred strangers discovering they
+are on a list called "candidates" is a worse first contact than the message
+would have been.
+
+Worth doing before any message goes out. It is a feed of what these people are
+actually shipping, and replying to somebody's work before writing to them does
+more for a reply rate than any wording of the message will.
+
+`POST /2/lists/:id/members` allows 300 per user per fifteen minutes, so a few
+hundred people is two runs. Numeric ids are stored rather than handles, because
+a handle is a display name its owner can change under you.
+
+### Then the messages
+
+```bash
+python3 tools/x_dm.py --program prezenti-sponsorship-trial              # dry run
+python3 tools/x_dm.py --program prezenti-sponsorship-trial --send --limit 25
+```
+
+The dry run is the default and needs no credentials at all.
+
+- **Paced.** 45–150 seconds between sends, jittered, not configurable to zero.
+- **Capped.** 25 a run by default.
+- **Stops on trouble.** Three transport errors in a row ends the batch and
+  leaves the rest of the queue untouched.
+- **Records refusals.** X will not say in advance whether somebody accepts
+  messages from people they do not follow; you find out by trying. A refusal is
+  written to `x_delivery` and that person is never queued again — discovered
+  once rather than once per attempt. That number is worth having on its own: it
+  is the real size of this channel.
+
+### Authorising it
+
+Once, and only the account owner can do it:
+
+```bash
+python3 tools/x_auth.py --start                    # prints a URL; approve it
+python3 tools/x_auth.py --finish '<the address bar you land on>'
+```
+
+The redirect goes to a loopback address that is listening to nothing, so the
+browser will say it cannot connect. That is expected — the address bar holds the
+grant. A callback served on the public tunnel would mean a permanently public
+endpoint accepting authorisation codes for the sake of one redirect that happens
+once; a dead loopback leaks nothing and costs one paste.
+
+Run `--finish` yourself rather than pasting the code into a chat. It is
+single-use and short-lived, but short-lived is not harmless. `X_CLIENT_ID` (and
+`X_CLIENT_SECRET` for a confidential app) live in `intake.env`; the grant lands
+at `~/talent-engine-runtime/x-tokens.json`, written 0600 from the first byte.
+
+X rotates the refresh token on every use, so the replacement is saved before the
+next call goes out. A refresh whose result was not persisted leaves the stored
+token already spent and the grant dead with no way back but the browser step.

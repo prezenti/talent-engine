@@ -278,6 +278,25 @@ CREATE TABLE IF NOT EXISTS outreach_hooks (
     sent_at TEXT DEFAULT ''
 );
 
+-- X-specific state, kept out of `outreach_hooks` because that table is about
+-- what there is to say to somebody and this is about one channel's mechanics.
+-- The numeric id is the thing X actually addresses; the handle is a display
+-- name that its owner can change under you.
+--
+-- `dm_status` is the honest record of what happened: X will not tell you in
+-- advance whether somebody accepts messages from strangers, so "undeliverable"
+-- is a fact discovered by trying, and worth keeping so it is discovered once.
+CREATE TABLE IF NOT EXISTS x_delivery (
+    handle TEXT PRIMARY KEY,
+    x_handle TEXT DEFAULT '',
+    user_id TEXT DEFAULT '',
+    resolved_at TEXT DEFAULT '',
+    listed_at TEXT DEFAULT '',
+    dm_at TEXT DEFAULT '',
+    dm_status TEXT DEFAULT '',
+    dm_detail TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS contacts (
     submission_id TEXT PRIMARY KEY,
     email TEXT DEFAULT '',
@@ -467,6 +486,44 @@ class Store:
     def hook_for_handle(self, handle: str) -> dict | None:
         row = self.conn.execute(
             "SELECT * FROM outreach_hooks WHERE handle = ?", (handle,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def save_x_id(self, handle: str, x_handle: str, user_id: str) -> None:
+        """Remember the numeric id X addresses this person by."""
+        self.conn.execute(
+            "INSERT INTO x_delivery (handle, x_handle, user_id, resolved_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(handle) DO UPDATE SET "
+            "x_handle = excluded.x_handle, user_id = excluded.user_id, "
+            "resolved_at = excluded.resolved_at",
+            (handle, x_handle, user_id, utc_now_iso()),
+        )
+        self.conn.commit()
+
+    def mark_listed(self, handle: str) -> None:
+        self.conn.execute(
+            "UPDATE x_delivery SET listed_at = ? WHERE handle = ?",
+            (utc_now_iso(), handle),
+        )
+        self.conn.commit()
+
+    def record_dm(self, handle: str, status: str, detail: str = "") -> None:
+        """What happened when we tried. `status` is one of sent | refused | error.
+
+        Recorded whatever the outcome, because the point of trying through the
+        API rather than by hand is that failure is legible: a refusal means that
+        person cannot be reached this way and should not be queued again.
+        """
+        self.conn.execute(
+            "UPDATE x_delivery SET dm_at = ?, dm_status = ?, dm_detail = ? "
+            "WHERE handle = ?",
+            (utc_now_iso(), status, detail[:300], handle),
+        )
+        self.conn.commit()
+
+    def x_delivery_for(self, handle: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM x_delivery WHERE handle = ?", (handle,)
         ).fetchone()
         return dict(row) if row else None
 

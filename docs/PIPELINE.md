@@ -90,15 +90,31 @@ says out loud in a meeting. Numbers come from a high-water-mark counter, not
 from `MAX(seq)+1`, so deleting a row cannot cause the next applicant to be
 issued a reference that has already gone out.
 
-**6. Nothing writes to a stranger.** The programme's terms say people found by
-scouting "are contacted only to invite an application", and there is no X
-credential on this host so that the sentence stays true by construction rather
-than by discipline. `tools/outreach.py` builds the list and drafts the message;
-a person sends it. The list excludes anyone who has already applied and anyone
-already marked contacted, and `outreach_hooks.sent_at` survives every rebuild --
-the hook is derived data and can be recomputed, the fact that a human already
-wrote to somebody cannot. A row with no verifiable hook renders an empty message
-rather than a vague one. See [OUTREACH.md](OUTREACH.md).
+**6. Nobody is written to twice, or written to with nothing to say.** The
+programme's terms say people found by scouting "are contacted only to invite an
+application", and that is the whole permitted scope of every channel here.
+
+Sending happens two ways and both obey the same queue. The **send console** is a
+person copying a message and pressing a button. **`tools/x_dm.py`** sends through
+X under a grant the account owner approved in a browser, so every message is
+still attributed to a person — X does not permit app-only authentication for
+Direct Messages, which is the correct shape for this.
+
+What holds regardless of channel:
+
+- `outreach_hooks.sent_at` is one column, written by both routes. A message sent
+  from the console removes that person from the X queue and vice versa.
+- Anyone who has applied is excluded by join, not by filter.
+- A row with no verifiable hook renders an empty message and is skipped.
+- A refusal — X telling us somebody does not accept messages from strangers — is
+  recorded in `x_delivery` and that person is never queued again. Discovered
+  once, not once per attempt.
+- Automated sending is paced by a gap no shorter than a person could type, in
+  batches, and the gap is not configurable to zero. Several hundred sends in an
+  afternoon is a bulk send whatever each one says, and the account it costs is
+  the one the programme speaks from.
+
+See [OUTREACH.md](OUTREACH.md).
 
 ## The stewards' sheet
 
