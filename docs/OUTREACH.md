@@ -71,6 +71,27 @@ button rather than a command afterwards is the whole design.
 - It is the only surface here that writes, so it has its own token and can be
   revoked without touching the read feeds.
 
+**Two buttons, and the second one matters as much as the first.** *Mark sent* is
+a message that went. *DMs closed* is X refusing to carry one, which is a settled
+fact about that person: it is written to `x_delivery` and they leave the queue
+permanently. Without it every batch re-offers the same shut doors and you
+re-check them by hand for as long as you keep going.
+
+Closed is deliberately **not** recorded as sent. Nobody was written to, and the
+column that says who was written to is what a conversion measure will read.
+
+Once ten people have been through, the header reports the measured share of
+accounts X will actually carry a message to. That number did not exist until
+somebody worked a batch by hand, and it is the real size of this channel.
+
+The same two outcomes from the terminal:
+
+```bash
+python3 tools/outreach.py --program prezenti-sponsorship-trial --mark a,b
+python3 tools/outreach.py --program prezenti-sponsorship-trial --closed c,d
+python3 tools/outreach.py --program prezenti-sponsorship-trial --unmark e
+```
+
 ## The one line that must be true
 
 Every row carries a **Why we found you** built from two facts already on

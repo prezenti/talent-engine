@@ -35,6 +35,7 @@ COLUMNS = [
     "Location",
     "GitHub",
     "Contacted",
+    "DMs closed",
 ]
 
 # Reachable, not yet applied, best-scored first. Unscored people are kept:
@@ -46,13 +47,14 @@ SELECT sc.handle,
        sc.channels,
        sc.first_seen,
        r.x_handle, r.name, r.location,
-       h.hook, h.repo, h.repo_desc, h.basis, h.sent_at,
+       h.hook, h.repo, h.repo_desc, h.basis, h.sent_at, d.dm_status,
        (SELECT MAX(total) FROM scores s WHERE s.handle = sc.handle) AS total,
        (SELECT COUNT(*) FROM submissions su
          WHERE LOWER(su.handle) = LOWER(sc.handle)) AS applied
   FROM scouted sc
   JOIN profile_recon r ON r.handle = sc.handle
   LEFT JOIN outreach_hooks h ON h.handle = sc.handle
+  LEFT JOIN x_delivery d ON d.handle = sc.handle
  WHERE sc.program = ?
    AND r.x_handle != ''
  ORDER BY COALESCE(total, -1) DESC, sc.first_seen DESC, sc.handle ASC
@@ -89,5 +91,6 @@ def csv_for(db_path: str, program: str, include_contacted: bool = True) -> str:
             r["location"] or "",
             f'https://github.com/{r["handle"]}',
             (r["sent_at"] or "")[:10],
+            "closed" if r["dm_status"] == "refused" else "",
         ])
     return buf.getvalue()

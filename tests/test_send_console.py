@@ -165,3 +165,68 @@ def test_the_mark_path_reaches_the_script_as_data_not_markup(tmp_path):
     page = _page(store)
     assert re.search(r'const MARK_PATH = "/send/tok/mark"', page)
     store.close()
+
+
+def test_a_closed_account_leaves_the_queue_for_good(tmp_path):
+    # The mistake this prevents: without it, every batch re-offers the same
+    # shut doors and the operator re-checks them by hand indefinitely.
+    store = _store(tmp_path)
+    _seed(store, "shut")
+    assert send_console.mark(store.db_path, "shut", "2026-08-24T20:00:00+00:00",
+                             status="closed")
+    assert 'id="c-shut"' not in _page(store)
+    assert store.x_delivery_for("shut")["dm_status"] == "refused"
+    store.close()
+
+
+def test_closed_is_not_the_same_as_sent(tmp_path):
+    store = _store(tmp_path)
+    _seed(store, "shut")
+    send_console.mark(store.db_path, "shut", "2026-08-24T20:00:00+00:00",
+                      status="closed")
+    # Nobody was written to, so the record of who has been written to must not
+    # say otherwise -- that column is what the conversion measure will read.
+    assert store.hook_for_handle("shut")["sent_at"] == ""
+    store.close()
+
+
+def test_closing_twice_reports_that_nothing_changed(tmp_path):
+    store = _store(tmp_path)
+    _seed(store, "shut")
+    assert send_console.mark(store.db_path, "shut", "2026-08-24T20:00:00+00:00", "closed")
+    assert not send_console.mark(store.db_path, "shut", "2026-08-25T20:00:00+00:00", "closed")
+    assert store.x_delivery_for("shut")["dm_at"] == "2026-08-24T20:00:00+00:00"
+    store.close()
+
+
+def test_a_resolved_id_survives_being_marked_closed(tmp_path):
+    # The console writes into the same row the API tools use; closing somebody
+    # must not throw away the numeric id that took a billed request to get.
+    store = _store(tmp_path)
+    _seed(store, "shut")
+    store.save_x_id("shut", "somebody", "424242")
+    send_console.mark(store.db_path, "shut", "2026-08-24T20:00:00+00:00", "closed")
+    row = store.x_delivery_for("shut")
+    assert row["user_id"] == "424242"
+    assert row["dm_status"] == "refused"
+    store.close()
+
+
+def test_the_reachable_rate_appears_once_there_is_enough_to_report(tmp_path):
+    store = _store(tmp_path)
+    for i in range(6):
+        _seed(store, f"s{i}", sent=f"2026-08-24T09:{i:02d}:00+00:00")
+    for i in range(4):
+        _seed(store, f"c{i}")
+        send_console.mark(store.db_path, f"c{i}", "2026-08-24T10:00:00+00:00", "closed")
+    _seed(store, "next_one")
+    assert "60% reachable so far" in _page(store)
+    store.close()
+
+
+def test_no_rate_is_claimed_from_a_handful(tmp_path):
+    store = _store(tmp_path)
+    _seed(store, "a", sent="2026-08-24T09:00:00+00:00")
+    _seed(store, "b")
+    assert "reachable so far" not in _page(store)
+    store.close()

@@ -43,9 +43,11 @@ SELECT sc.handle,
   FROM scouted sc
   JOIN profile_recon r ON r.handle = sc.handle
   JOIN outreach_hooks h ON h.handle = sc.handle
+  LEFT JOIN x_delivery d ON d.handle = sc.handle
  WHERE sc.program = ?
    AND r.x_handle != ''
    AND COALESCE(h.sent_at, '') = ''
+   AND COALESCE(d.dm_status, '') != 'refused'
    AND h.hook != ''
    AND NOT EXISTS (SELECT 1 FROM submissions su
                     WHERE LOWER(su.handle) = LOWER(sc.handle))
@@ -58,9 +60,12 @@ SELECT
   (SELECT COUNT(*) FROM outreach_hooks WHERE COALESCE(sent_at,'') != '') AS sent,
   (SELECT COUNT(*) FROM outreach_hooks
     WHERE substr(COALESCE(sent_at,''), 1, 10) = ?) AS sent_today,
+  (SELECT COUNT(*) FROM x_delivery WHERE dm_status = 'refused') AS closed,
   (SELECT COUNT(*) FROM outreach_hooks h
      JOIN profile_recon r ON r.handle = h.handle
-    WHERE r.x_handle != '' AND COALESCE(h.sent_at,'') = '' AND h.hook != '') AS waiting
+     LEFT JOIN x_delivery d ON d.handle = h.handle
+    WHERE r.x_handle != '' AND COALESCE(h.sent_at,'') = '' AND h.hook != ''
+      AND COALESCE(d.dm_status,'') != 'refused') AS waiting
 """
 
 CSS = """
@@ -101,6 +106,7 @@ button,a.btn{font:inherit;font-size:.85rem;padding:.4rem .8rem;border-radius:.4r
   cursor:pointer;text-decoration:none;display:inline-block}
 button:hover,a.btn:hover{border-color:var(--accent)}
 button.mark{border-color:var(--accent);color:var(--accent)}
+button.closed{color:var(--dim)}
 button[disabled]{cursor:default;color:var(--done);border-color:var(--line)}
 .empty{color:var(--dim);text-align:center;padding:3rem 0}
 footer{color:var(--dim);font-size:.78rem;margin-top:2rem;border-top:1px solid var(--line);
@@ -161,6 +167,8 @@ def _card(row: sqlite3.Row, mark_path: str) -> str:
     <a class="btn" href="https://x.com/{e(row["x_handle"])}" target="_blank"
        rel="noopener noreferrer">Open on X</a>
     <button type="button" class="mark" data-mark="{e(handle)}">Mark sent</button>
+    <button type="button" class="closed" data-mark="{e(handle)}"
+      data-status="closed">DMs closed</button>
   </div>
 </article>"""
 
@@ -191,21 +199,27 @@ document.addEventListener('click', async (ev) => {
   const mark = ev.target.closest('[data-mark]');
   if (!mark) return;
   const handle = mark.dataset.mark;
-  mark.disabled = true; mark.textContent = 'marking…';
+  const status = mark.dataset.status || 'sent';
+  const was = mark.textContent;
+  mark.disabled = true; mark.textContent = 'saving…';
   try {
     const res = await fetch(MARK_PATH, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({handle: handle}),
+      body: JSON.stringify({handle: handle, status: status}),
     });
     if (!res.ok) throw new Error(await res.text());
     const out = await res.json();
-    mark.textContent = out.changed ? 'sent' : 'already recorded';
+    if (out.changed) {
+      mark.textContent = status === 'closed' ? 'closed' : 'sent';
+    } else {
+      mark.textContent = 'already recorded';
+    }
     document.getElementById('c-' + handle).classList.add('done');
   } catch (e) {
     // Never leave a failed mark looking successful: an unrecorded send is how
     // somebody gets written to twice.
-    mark.disabled = false; mark.textContent = 'failed — retry';
+    mark.disabled = false; mark.textContent = was + ' — retry';
   }
 });
 """
@@ -219,6 +233,11 @@ def page(db_path: str, program: str, mark_path: str, today: str) -> str:
         counts = conn.execute(COUNTS, (today,)).fetchone()
     finally:
         conn.close()
+
+    # The one number nobody had before somebody worked a batch by hand: what
+    # fraction of these people X will actually carry a message to.
+    tried = counts["sent"] + counts["closed"]
+    reach = f" ({counts['sent'] * 100 // tried}% reachable so far)" if tried >= 10 else ""
 
     pace = ""
     if counts["sent_today"] >= SOFT_DAILY_CAP:
@@ -241,10 +260,13 @@ def page(db_path: str, program: str, mark_path: str, today: str) -> str:
 <div class="wrap">
 <h1>Send queue</h1>
 <p class="sub">{counts["waiting"]} waiting · {counts["sent"]} written to ·
-  {counts["sent_today"]} today · showing the next {len(rows)}</p>
+  {counts["closed"]} closed to DMs{reach} · {counts["sent_today"]} today ·
+  showing the next {len(rows)}</p>
 {pace}
 {cards}
-<footer>The draft is the true part: it names the repository that surfaced them
+<footer><strong>DMs closed</strong> takes them out of the queue for good, so a
+later batch does not offer you the same shut door twice. They may still be
+reachable by email or by replying in public.<br>The draft is the true part: it names the repository that surfaced them
 and nothing else. <strong>Add a sentence of your own before you send.</strong>
 The box is editable, their repository and its description are just above it, and
 one line showing you actually looked is worth more than everything the draft
@@ -254,8 +276,14 @@ says. Then mark it, which is what stops anyone being written to twice.</footer>
 """
 
 
-def mark(db_path: str, handle: str, when: str) -> bool:
-    """Record a send. Returns False if the handle is not in the queue at all.
+def mark(db_path: str, handle: str, when: str, status: str = "sent") -> bool:
+    """Record what happened. Returns False if nothing changed.
+
+    Two outcomes, and the second one matters as much as the first. `sent` is a
+    message that went. `closed` is X refusing to carry one, which is a settled
+    fact about that person -- so it is written down and they leave the queue
+    for good. Without it every batch re-offers the same shut doors, and the
+    operator re-checks them by hand for as long as they keep going.
 
     A separate short-lived connection rather than the service's own: this runs
     on a request thread, and the one write on this page is not worth making the
@@ -263,11 +291,25 @@ def mark(db_path: str, handle: str, when: str) -> bool:
     """
     conn = sqlite3.connect(db_path, timeout=5)
     try:
-        cur = conn.execute(
-            "UPDATE outreach_hooks SET sent_at = ? "
-            "WHERE handle = ? AND COALESCE(sent_at,'') = ''",
-            (when, handle),
-        )
+        if status == "closed":
+            # Recorded in x_delivery beside the API's own findings, because it
+            # is the same fact arrived at by a different route: this person
+            # does not accept messages from strangers.
+            cur = conn.execute(
+                "INSERT INTO x_delivery (handle, dm_at, dm_status, dm_detail) "
+                "VALUES (?, ?, 'refused', 'DMs closed, checked by hand') "
+                "ON CONFLICT(handle) DO UPDATE SET "
+                "dm_at = excluded.dm_at, dm_status = excluded.dm_status, "
+                "dm_detail = excluded.dm_detail "
+                "WHERE COALESCE(x_delivery.dm_status,'') != 'refused'",
+                (handle, when),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE outreach_hooks SET sent_at = ? "
+                "WHERE handle = ? AND COALESCE(sent_at,'') = ''",
+                (when, handle),
+            )
         conn.commit()
         return cur.rowcount > 0
     finally:

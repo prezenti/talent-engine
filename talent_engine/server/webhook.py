@@ -524,15 +524,19 @@ def build_handler(service: IntakeService, secret: str, pages: dict[str, tuple[st
             try:
                 body = json.loads(self.rfile.read(length).decode("utf-8"))
                 handle = str(body.get("handle", "")).strip()
+                status = str(body.get("status", "sent")).strip()
             except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
                 self._plain(400)
                 return
             if not handle or len(handle) > 40:
                 self._plain(400)
                 return
+            if status not in ("sent", "closed"):
+                self._plain(400)
+                return
             try:
                 ok = send_console.mark(
-                    service.db_path, handle, utc_now_iso()
+                    service.db_path, handle, utc_now_iso(), status
                 )
             except sqlite3.Error:
                 log.exception("could not mark %s contacted", handle)

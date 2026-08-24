@@ -53,12 +53,15 @@ SELECT sc.handle,
          ORDER BY total DESC LIMIT 1) AS payload,
        (SELECT COUNT(*) FROM submissions su
          WHERE LOWER(su.handle) = LOWER(sc.handle)) AS applied,
-       h.hook, h.repo, h.repo_url, h.repo_desc, h.basis, h.sent_at
+       h.hook, h.repo, h.repo_url, h.repo_desc, h.basis, h.sent_at,
+       d.dm_status
   FROM scouted sc
   JOIN profile_recon r ON r.handle = sc.handle
   LEFT JOIN outreach_hooks h ON h.handle = sc.handle
+  LEFT JOIN x_delivery d ON d.handle = sc.handle
  WHERE sc.program = ?
    AND r.x_handle != ''
+   AND COALESCE(d.dm_status, '') != 'refused'
  ORDER BY COALESCE(total, -1) DESC, sc.first_seen DESC
 """
 
@@ -81,6 +84,9 @@ def main() -> int:
                     help="include people already marked contacted")
     ap.add_argument("--mark", default="",
                     help="comma-separated handles to record as contacted, then exit")
+    ap.add_argument("--closed", default="",
+                    help="comma-separated handles whose DMs are shut; they leave "
+                         "the queue for good rather than being re-offered")
     ap.add_argument("--unmark", default="",
                     help="put handles back in the queue -- for a mis-tapped button, "
                          "not for writing to somebody a second time")
@@ -92,6 +98,17 @@ def main() -> int:
         for handle in [h.strip().lstrip("@") for h in args.mark.split(",") if h.strip()]:
             store.mark_contacted(handle)
             print(f"marked contacted: {handle}")
+        store.close()
+        return 0
+
+    if args.closed:
+        for handle in [h.strip().lstrip("@") for h in args.closed.split(",") if h.strip()]:
+            store.record_dm(handle, "refused", "DMs closed, checked by hand")
+            if not store.x_delivery_for(handle):
+                # record_dm only updates; somebody never resolved has no row yet.
+                store.save_x_id(handle, "", "")
+                store.record_dm(handle, "refused", "DMs closed, checked by hand")
+            print(f"closed to DMs: {handle}")
         store.close()
         return 0
 
