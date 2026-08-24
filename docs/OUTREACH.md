@@ -56,8 +56,11 @@ described original repo) and the scout channel that surfaced them.
 | `originators` | their own repo matched the taxonomy | your own repositories, in the space we were searching |
 | `adjacent` | contributor to a repo `originators` surfaced | your contributions to a small project in that space |
 
-Where neither is available the column is empty. **Send that row without a hook
-or do not send it — do not invent one.** The entire argument of the programme
+Where the channel is known but no repository is, the hook still says how they
+arrived and **Basis** reads `scout channel only` — true, but naming no work,
+which is most of what makes the message worth sending. Where neither is
+available the column is empty and the drafted message is empty with it. **Send
+that row without a hook or do not send it — do not invent one.** The entire argument of the programme
 is that its claims can be checked; an opening line that cannot be is worse than
 no message.
 

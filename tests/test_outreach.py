@@ -132,3 +132,10 @@ def test_marking_someone_contacted_survives_a_rebuild_of_the_hook(tmp_path):
     assert row["repo"] == "someone/b"
     assert row["sent_at"] == "2026-08-24T00:00:00+00:00"
     store.close()
+
+
+def test_a_hook_with_no_repository_says_so_rather_than_looking_specific():
+    found = outreach.hook_for(FakeClient([]), "someone", "contributors", None)
+    assert found["repo"] == ""
+    assert found["hook"].startswith("a merged pull request")
+    assert found["basis"] == "scout channel only"

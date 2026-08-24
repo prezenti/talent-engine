@@ -125,7 +125,11 @@ def hook_for(client, handle: str, channels: str, payload: str | None) -> dict[st
     elif out["repo"]:
         out["hook"] = f"your work on {out['repo']}"
     elif phrase:
+        # True, but it names no work -- which is most of what makes the message
+        # worth sending. Said out loud in the Basis column rather than left as
+        # a blank, so a weak opener is a choice the operator makes knowingly.
         out["hook"] = phrase
+        out["basis"] = "scout channel only"
     return out
 
 
