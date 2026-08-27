@@ -2,7 +2,7 @@
 #
 # Pull engine changes from P-U-C/talent-engine into this deployment.
 #
-# The two repositories deliberately disagree about exactly three files. Upstream
+# The two repositories deliberately disagree about a handful of files. Upstream
 # README.md describes the reusable engine; this one is what applicants read
 # before they apply. docs/ENGINE.md exists only here, and deploy/deployment.env
 # is what makes this deployment this one -- the program, the hostname and the
@@ -18,7 +18,9 @@ set -euo pipefail
 
 UPSTREAM_URL="https://github.com/P-U-C/talent-engine.git"
 UPSTREAM_REMOTE="upstream"
-DEPLOYMENT_FILES=(README.md docs/ENGINE.md deploy/deployment.env)
+DEPLOYMENT_FILES=(README.md docs/ENGINE.md deploy/deployment.env \
+                  .gitattributes tools/sync-from-upstream.sh \
+                  tools/publish-to-upstream.sh)
 DEPLOYMENT_MARKER="Prezenti AI Builder Sponsorships"
 
 cd "$(dirname "$0")/.."

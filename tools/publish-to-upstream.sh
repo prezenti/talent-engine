@@ -9,11 +9,20 @@
 # of them engine work, none of them in the engine. The repository described as
 # reusable had quietly become an ancestor of the real thing.
 #
-# The hazard is the same one as the other direction, mirrored. Three files belong
+# The hazard is the same one as the other direction, mirrored. Some files belong
 # to this deployment and must not travel: README.md is what applicants read
 # before applying, docs/ENGINE.md exists only here, and deploy/deployment.env is
 # this deployment's program, hostname and seed list. Merging without restoring
 # them replaces upstream's engine documentation with a sponsorship landing page.
+#
+# The list was three files and should have been six. .gitattributes and both of
+# these scripts are just as much this deployment's -- .gitattributes opens "This
+# fork is a deployment of P-U-C/talent-engine" and declares merge=ours for two
+# files upstream does not have, and sync-from-upstream.sh hard-codes this
+# deployment's README marker and names upstream as the thing to merge from.
+# They travelled in PR #2, where CI caught the second one by working exactly as
+# designed: the workflow treats an executable sync-from-upstream.sh as "I am a
+# deployment fork" and ran its --check against the engine, which is not one.
 #
 #   tools/publish-to-upstream.sh              # prepare the branch, run the tests
 #   tools/publish-to-upstream.sh --push       # ...and push it, then print the PR command
@@ -25,7 +34,15 @@ set -euo pipefail
 
 UPSTREAM_URL="https://github.com/P-U-C/talent-engine.git"
 UPSTREAM_REMOTE="upstream"
-DEPLOYMENT_FILES=(README.md docs/ENGINE.md deploy/deployment.env)
+DEPLOYMENT_FILES=(README.md docs/ENGINE.md deploy/deployment.env \
+                  .gitattributes tools/sync-from-upstream.sh \
+                  tools/publish-to-upstream.sh)
+# Of those, the only one upstream has a legitimate version of. The others exist
+# here and must not travel at all -- deciding that by asking whether upstream
+# already has a copy trusts the very state a previous leak corrupted, and would
+# have "restored" this deployment's own .gitattributes and sync script back onto
+# the branch that had just carried them upstream by mistake.
+UPSTREAM_OWNS=(README.md)
 BRANCH="from-deployment-$(git rev-parse --short HEAD)"
 PUSH=0
 [ "${1:-}" = "--push" ] && PUSH=1
@@ -59,7 +76,8 @@ git merge -q --no-edit -X theirs "$start" || {
 
 # Give upstream its own copies back. This is the whole point of the script.
 for f in "${DEPLOYMENT_FILES[@]}"; do
-  if git cat-file -e "$UPSTREAM_REMOTE/main:$f" 2>/dev/null; then
+  if printf '%s\n' "${UPSTREAM_OWNS[@]}" | grep -qxF -- "$f" \
+     && git cat-file -e "$UPSTREAM_REMOTE/main:$f" 2>/dev/null; then
     git checkout -q "$UPSTREAM_REMOTE/main" -- "$f"
     echo "  kept upstream's $f"
   else
