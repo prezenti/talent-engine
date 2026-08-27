@@ -32,6 +32,18 @@ python3 tools/crm_report.py --standalone \
   && mv "$HOME/talent-engine-runtime/board.html.tmp" \
         "$HOME/talent-engine-runtime/board.html"
 
+# Two more copies, both free, both for the same reason: a link Chad opens must
+# be live. The claude.ai artifact was a one-off publish that froze the moment it
+# was made, so it showed 5 applicants for a week while the board showed 27.
+#   - ops-state/public/applicants.html is served on the tailnet beside the ops
+#     console, so it is never more than 15 minutes old and costs nothing.
+#   - board.artifact.html is body-only and ready to publish, so republishing the
+#     artifact is one call with no conversion step to get wrong.
+mkdir -p "$HOME/ops-state/public"
+cp -f "$HOME/talent-engine-runtime/board.html" \
+      "$HOME/ops-state/public/applicants.html" 2>/dev/null || true
+python3 "$HOME/talent-engine/tools/board_to_artifact.py" >/dev/null 2>&1 || true
+
 stuck=$(sqlite3 "$DB" "
   select count(*) from submissions
   where status <> 'scored'
