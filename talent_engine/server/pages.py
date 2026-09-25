@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import base64
 import html
-import urllib.parse
 import os
+import re
+import urllib.parse
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from pathlib import Path
 # read the deployed rubric in.
 REPO_URL = "https://github.com/prezenti/talent-engine"
 ASSETS = Path(__file__).resolve().parent / "assets"
+_INVITE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,}$")
 
 
 @lru_cache(maxsize=8)
@@ -288,13 +290,13 @@ def _terms_block(overlay) -> str:
     )
 
 
-def _status_block(overlay, form_id: str) -> str:
+def _status_block(overlay, form_id: str, *, ignore_env_close: bool = False) -> str:
     """Say plainly whether applications are open, and show the form only if so.
 
     A page that renders an application form is a page that says "apply". If the
     programme is not taking applications, it must not look like it is.
     """
-    if _env_applications_closed():
+    if not ignore_env_close and _env_applications_closed():
         closed_at = html.escape(os.environ.get("TE_APPLICATIONS_CLOSED_AT", "").strip())
         suffix = f" This round closed at {closed_at}." if closed_at else ""
         return (
@@ -311,7 +313,7 @@ def _status_block(overlay, form_id: str) -> str:
             "</div>"
         )
     closing = ""
-    close_label = _applications_close_label(overlay)
+    close_label = "" if ignore_env_close else _applications_close_label(overlay)
     if close_label:
         closing = (
             f'<p class="note">Applications close when the fifth place is '
@@ -336,11 +338,19 @@ def _applications_close_label(overlay) -> str:
     return ""
 
 
+def _invite_path() -> str:
+    token = os.environ.get("TE_INVITE_APPLY_TOKEN", "").strip()
+    if not token or not _INVITE_TOKEN_RE.fullmatch(token):
+        return ""
+    return f"/invite/{token}.html"
+
+
 def landing_page(
     program_name: str,
     form_id: str,
     copy: dict[str, str] | None = None,
     overlay=None,
+    invite: bool = False,
 ) -> bytes:
     """Render the application page.
 
@@ -361,6 +371,12 @@ def landing_page(
     repo_url = html.escape(text.get("repo_url") or REPO_URL, quote=True)
     program_key = html.escape(
         getattr(overlay, "scoring_program", "") or getattr(overlay, "key", "") or "PROGRAM"
+    )
+    invite_note = (
+        '<p class="note"><strong>Private invitation.</strong> The public round '
+        "is closed; use this form only if this link was sent to you directly.</p>"
+        if invite
+        else ""
     )
 
     return f"""<!doctype html>
@@ -438,7 +454,8 @@ an assessment record.</p>
 {_terms_block(overlay)}
 
 <h2>Apply</h2>
-{_status_block(overlay, form_id)}
+{invite_note}
+{_status_block(overlay, form_id, ignore_env_close=invite)}
 
 </div>
 
@@ -465,7 +482,15 @@ def routes(
     """Exact path -> (content type, body). Anything not in here is a 404."""
     form_id = form_id if form_id is not None else os.environ.get("TALLY_FORM_ID", "")
     page = landing_page(program_name, form_id, copy, overlay)
-    return {
+    table = {
         "/": ("text/html; charset=utf-8", page),
         "/apply": ("text/html; charset=utf-8", page),
     }
+    invite_path = _invite_path()
+    if invite_path:
+        invite_form_id = os.environ.get("TE_INVITE_TALLY_FORM_ID", "").strip() or form_id
+        table[invite_path] = (
+            "text/html; charset=utf-8",
+            landing_page(program_name, invite_form_id, copy, overlay, invite=True),
+        )
+    return table

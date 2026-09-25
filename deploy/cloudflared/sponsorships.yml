@@ -16,6 +16,11 @@ ingress:
   - hostname: sponsorships.prezenti.xyz
     path: ^/apply/?$
     service: http://127.0.0.1:8787
+  # Private late-application link. The local service still exact-matches the
+  # generated token path, so this edge rule only lets the invite shape through.
+  - hostname: sponsorships.prezenti.xyz
+    path: ^/invite/[A-Za-z0-9_-]{20,}\.html$
+    service: http://127.0.0.1:8787
   - hostname: sponsorships.prezenti.xyz
     path: ^/webhook/tally/?$
     service: http://127.0.0.1:8787

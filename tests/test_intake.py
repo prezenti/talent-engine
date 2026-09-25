@@ -458,6 +458,48 @@ def test_page_is_absent_when_not_configured(live):
     assert get(url + "/healthz")[0] == 200
 
 
+def test_invite_route_bypasses_the_deployment_close_flag(monkeypatch):
+    from talent_engine.server import routes
+
+    token = "inviteToken000000000000"
+    monkeypatch.setenv("TE_APPLICATIONS_CLOSED", "1")
+    monkeypatch.setenv("TE_APPLICATIONS_CLOSED_AT", "2026-09-24 00:00 America/Los_Angeles")
+    monkeypatch.setenv("TE_INVITE_APPLY_TOKEN", token)
+
+    pages = routes("P", "publicForm")
+
+    public = pages["/"][1].decode()
+    invite = pages[f"/invite/{token}.html"][1].decode()
+    assert "Applications are closed" in public
+    assert "tally.so/embed" not in public
+    assert "Private invitation" in invite
+    assert "https://tally.so/embed/publicForm" in invite
+    assert "Applications are closed" not in invite
+
+
+def test_invite_route_requires_a_long_urlsafe_token(monkeypatch):
+    from talent_engine.server import routes
+
+    monkeypatch.setenv("TE_INVITE_APPLY_TOKEN", "short")
+    assert all(not path.startswith("/invite/") for path in routes("P", "formid"))
+
+    monkeypatch.setenv("TE_INVITE_APPLY_TOKEN", "bad/token/bad/token/bad")
+    assert all(not path.startswith("/invite/") for path in routes("P", "formid"))
+
+
+def test_invite_route_can_use_a_separate_form(monkeypatch):
+    from talent_engine.server import routes
+
+    token = "aaaaaaaaaaaaaaaaaaaa"
+    monkeypatch.setenv("TE_INVITE_APPLY_TOKEN", token)
+    monkeypatch.setenv("TE_INVITE_TALLY_FORM_ID", "privateForm")
+
+    pages = routes("P", "publicForm")
+
+    assert "https://tally.so/embed/publicForm" in pages["/"][1].decode()
+    assert "https://tally.so/embed/privateForm" in pages[f"/invite/{token}.html"][1].decode()
+
+
 def test_the_form_embed_degrades_honestly_without_a_form_id():
     from talent_engine.server import landing_page
 
